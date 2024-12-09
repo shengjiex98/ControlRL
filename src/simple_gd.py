@@ -59,6 +59,7 @@ def train(env_name='CartPole-v1', hidden_sizes=[32], lr=1e-2,
         batch_lens = []         # for measuring episode lengths
 
         # rendering (workaround for Gymnasium API change)
+        nonlocal env
         if render:
             env = gym.make(env_name, render_mode='human')
 
