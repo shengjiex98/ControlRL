@@ -5,8 +5,8 @@ import torch.nn as nn
 from torch.distributions.categorical import Categorical
 from torch.optim import Adam
 import numpy as np
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 
 def mlp(sizes, activation=nn.ReLU, output_activation=nn.Identity):
     # Build a feedforward neural network.
@@ -16,11 +16,11 @@ def mlp(sizes, activation=nn.ReLU, output_activation=nn.Identity):
     layers += [nn.Linear(sizes[-2], sizes[-1]), output_activation()]
     return nn.Sequential(*layers)
 
-def train(env_name='CartPole-v0', hidden_sizes=[32], lr=1e-2, 
+def train(env_name='CartPole-v1', hidden_sizes=[32], lr=1e-2, 
           epochs=50, batch_size=5000, render=False):
 
     # make environment, check spaces, get obs / act dims
-    env = gym.make(env_name)
+    env = gym.make(env_name, render_mode=None)
     assert isinstance(env.observation_space, Box), \
         "This example only works for envs with continuous state spaces."
     assert isinstance(env.action_space, Discrete), \
@@ -58,27 +58,24 @@ def train(env_name='CartPole-v0', hidden_sizes=[32], lr=1e-2,
         batch_rets = []         # for measuring episode returns
         batch_lens = []         # for measuring episode lengths
 
+        # rendering (workaround for Gymnasium API change)
+        if render:
+            env = gym.make(env_name, render_mode='human')
+
         # reset episode-specific variables
-        obs = env.reset()       # first obs comes from starting distribution
+        obs, _ = env.reset()    # first obs comes from starting distribution
         done = False            # signal from environment that episode is over
         ep_rews = []            # list for rewards accrued throughout ep
 
-        # render first episode of each epoch
-        finished_rendering_this_epoch = False
-
         # collect experience by acting in the environment with current policy
         while True:
-
-            # rendering
-            if (not finished_rendering_this_epoch) and render:
-                env.render()
-
             # save obs
             batch_obs.append(obs.copy())
 
             # act in the environment
             act = get_action(torch.as_tensor(obs, dtype=torch.float32))
-            obs, rew, done, _ = env.step(act)
+            obs, rew, term, trun, _ = env.step(act)
+            done = term or trun
 
             # save action, reward
             batch_acts.append(act)
@@ -93,11 +90,13 @@ def train(env_name='CartPole-v0', hidden_sizes=[32], lr=1e-2,
                 # the weight for each logprob(a|s) is R(tau)
                 batch_weights += [ep_ret] * ep_len
 
-                # reset episode-specific variables
-                obs, done, ep_rews = env.reset(), False, []
+                # won't render again this epoch 
+                # (workaround for Gymnasium API change)
+                if env.render_mode is not None:
+                    env = gym.make(env_name, render_mode=None)
 
-                # won't render again this epoch
-                finished_rendering_this_epoch = True
+                # reset episode-specific variables
+                (obs, _), done, ep_rews = env.reset(), False, []
 
                 # end experience loop if we have enough of it
                 if len(batch_obs) > batch_size:
@@ -122,7 +121,7 @@ def train(env_name='CartPole-v0', hidden_sizes=[32], lr=1e-2,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', '--env', type=str, default='CartPole-v0')
+    parser.add_argument('--env_name', '--env', type=str, default='CartPole-v1')
     parser.add_argument('--render', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-2)
     args = parser.parse_args()
