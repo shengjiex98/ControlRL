@@ -1,4 +1,4 @@
-# Adapted from reference implementation at [OpenAI Spinning Up](https://github.com/openai/spinningup/blob/master/spinup/examples/pytorch/pg_math/1_simple_pg.py)
+# Adapted from reference implementation at [OpenAI Spinning Up](https://github.com/openai/spinningup/blob/master/spinup/examples/pytorch/pg_math/2_rtg_pg.py)
 
 import torch
 import torch.nn as nn
@@ -45,6 +45,13 @@ def train(env_name='CartPole-v1', hidden_sizes=[32], lr=1e-2,
     def compute_loss(obs, act, weights):
         logp = get_policy(obs).log_prob(act)
         return -(logp * weights).mean()
+    
+    def reward_to_go(rews):
+        n = len(rews)
+        rtgs = np.zeros_like(rews)
+        for i in reversed(range(n)):
+            rtgs[i] = rews[i] + (rtgs[i+1] if i+1 < n else 0)
+        return rtgs
 
     # make optimizer
     optimizer = Adam(logits_net.parameters(), lr=lr)
@@ -88,8 +95,8 @@ def train(env_name='CartPole-v1', hidden_sizes=[32], lr=1e-2,
                 batch_rets.append(ep_ret)
                 batch_lens.append(ep_len)
 
-                # the weight for each logprob(a|s) is R(tau)
-                batch_weights += [ep_ret] * ep_len
+                # the weight for each logprob(a|s) is is reward-to-go from t
+                batch_weights += list(reward_to_go(ep_rews))
 
                 # won't render again this epoch 
                 # (workaround for Gymnasium API change)
